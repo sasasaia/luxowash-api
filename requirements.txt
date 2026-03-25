@@ -2,5 +2,3 @@ Flask==3.0.3
 flask_cors
 pymssql
 PythonSimpleFunctions
-PyJWT
-python-dotenv
