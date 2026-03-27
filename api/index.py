@@ -148,6 +148,68 @@ def active_employees():
     except Exception as e:
         return jsonify(bake(str(e))), 500
 
+@app.route("/api/employees/time/logs", methods=["GET"])
+def employee_time_logs():
+    try:
+        date_filter = request.args.get("date") # YYYY-MM-DD
+        conn = get_connection()
+        cursor = conn.cursor(as_dict=True)
+        query = """
+            SELECT t.*, e.FirstName, e.LastName 
+            FROM EmployeeTimeList t
+            JOIN EmployeeList e ON t.EmployeeId = e.EmployeeId
+        """
+        if date_filter:
+            query += " WHERE t.DateCreated LIKE %s"
+            cursor.execute(query + " ORDER BY t.DateCreated DESC", (date_filter + "%",))
+        else:
+            cursor.execute(query + " ORDER BY t.DateCreated DESC")
+            
+        rows = cursor.fetchall()
+        conn.close()
+        return jsonify(rows)
+    except Exception as e:
+        return jsonify(bake(str(e))), 500
+
+@app.route("/api/settings", methods=["GET", "POST"])
+def settings():
+    try:
+        conn = get_connection()
+        cursor = conn.cursor(as_dict=True)
+        
+        if request.method == "GET":
+            cursor.execute("SELECT * FROM SettingsList")
+            rows = cursor.fetchall()
+            # Convert to dict for easier use
+            settings_dict = {row['SettingKey']: row['SettingValue'] for row in rows}
+            conn.close()
+            return jsonify(settings_dict)
+            
+        elif request.method == "POST":
+            data = request.json # Expecting {key: value}
+            for key, value in data.items():
+                # Check if exists
+                cursor.execute("SELECT * FROM SettingsList WHERE SettingKey = %s", (key,))
+                if cursor.fetchone():
+                    cursor.execute("UPDATE SettingsList SET SettingValue = %s WHERE SettingKey = %s", (str(value), key))
+                else:
+                    cursor.execute("INSERT INTO SettingsList (SettingKey, SettingValue) VALUES (%s, %s)", (key, str(value)))
+            
+            conn.commit()
+            conn.close()
+            return jsonify(bake("Settings updated"))
+    except Exception as e:
+        # If table doesn't exist, try to create it (simple migration)
+        try:
+            cursor.execute("CREATE TABLE SettingsList (SettingKey NVARCHAR(255) PRIMARY KEY, SettingValue NVARCHAR(MAX))")
+            conn.commit()
+            # Retry the logic or just return empty
+            conn.close()
+            return jsonify({})
+        except:
+            if conn: conn.close()
+            return jsonify(bake(str(e))), 500
+
 # --- CUSTOMERS & VEHICLES ---
 @app.route("/api/customers", methods=["GET", "POST", "PUT"])
 def customers():
@@ -156,7 +218,11 @@ def customers():
         cursor = conn.cursor(as_dict=True)
 
         if request.method == "GET":
-            cursor.execute("SELECT * FROM CustomerList")
+            cursor.execute("""
+                SELECT c.*, 
+                (SELECT COUNT(*) FROM CustomerList WHERE ReferredBy = c.ReferralCode AND ReferralCode IS NOT NULL AND ReferralCode != '') as ReferralCount
+                FROM CustomerList c
+            """)
             rows = cursor.fetchall()
             conn.close()
             return jsonify(rows)
@@ -165,8 +231,8 @@ def customers():
             data = request.json
             cust_id = str(uuid.uuid4())
             cursor.execute(
-                "INSERT INTO CustomerList (CustomerId, LastName, FirstName, MiddleName, MobileNumber, CustomerAddress) VALUES (%s, %s, %s, %s, %s, %s)",
-                (cust_id, data.get("LastName"), data.get("FirstName"), data.get("MiddleName"), data.get("MobileNumber"), data.get("CustomerAddress"))
+                "INSERT INTO CustomerList (CustomerId, LastName, FirstName, MiddleName, MobileNumber, CustomerAddress, ReferralCode, ReferredBy) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+                (cust_id, data.get("LastName"), data.get("FirstName"), data.get("MiddleName"), data.get("MobileNumber"), data.get("CustomerAddress"), data.get("ReferralCode"), data.get("ReferredBy"))
             )
             log_activity(cursor, f"Added customer {data.get('FirstName')} {data.get('LastName')}")
             conn.commit()
@@ -176,8 +242,8 @@ def customers():
         elif request.method == "PUT":
             data = request.json
             cursor.execute(
-                "UPDATE CustomerList SET LastName=%s, FirstName=%s, MiddleName=%s, MobileNumber=%s, CustomerAddress=%s WHERE CustomerId=%s",
-                (data.get("LastName"), data.get("FirstName"), data.get("MiddleName"), data.get("MobileNumber"), data.get("CustomerAddress"), data.get("CustomerId"))
+                "UPDATE CustomerList SET LastName=%s, FirstName=%s, MiddleName=%s, MobileNumber=%s, CustomerAddress=%s, ReferralCode=%s, ReferredBy=%s WHERE CustomerId=%s",
+                (data.get("LastName"), data.get("FirstName"), data.get("MiddleName"), data.get("MobileNumber"), data.get("CustomerAddress"), data.get("ReferralCode"), data.get("ReferredBy"), data.get("CustomerId"))
             )
             log_activity(cursor, f"Updated customer {data.get('CustomerId')}")
             conn.commit()
@@ -308,7 +374,7 @@ def transactions():
             
             cursor.execute(
                 "INSERT INTO TransactionList (TransactionId, EmployeeIdList, ServiceIdList, PackageId, Extras, VehicleId, TransactionStatus, DateCreated, DateUpdated) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
-                (trans_id, data.get("EmployeeIdList"), data.get("ServiceIdList"), data.get("PackageId"), data.get("Extras"), data.get("VehicleId"), data.get("TransactionStatus"), now, now)
+                (trans_id, data.get("EmployeeIdList"), data.get("ServiceIdList"), data.get("PackageId"), data.get("Extras"), data.get("VehicleId"), "In Progress", now, now)
             )
             
             # Create Billing
