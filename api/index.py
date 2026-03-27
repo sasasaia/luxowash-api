@@ -105,7 +105,8 @@ def employee_time():
         action = data.get("action") # "in" or "out"
         now = datetime.now()
         time_str = now.strftime("%I:%M:%S %p")
-        date_str = now.strftime("%Y-%m-%d")
+        date_str = now.strftime("%Y-%m-%d %I:%M:%S %p")
+        today_prefix = now.strftime("%Y-%m-%d") + "%"
 
         conn = get_connection()
         cursor = conn.cursor(as_dict=True)
@@ -119,8 +120,8 @@ def employee_time():
         elif action == "out":
             # Update the latest record without a TimeOut for today
             cursor.execute(
-                "UPDATE EmployeeTimeList SET TimeOut = %s WHERE EmployeeId = %s AND DateCreated = %s AND TimeOut IS NULL",
-                (time_str, emp_id, date_str)
+                "UPDATE EmployeeTimeList SET TimeOut = %s WHERE EmployeeId = %s AND DateCreated LIKE %s AND TimeOut IS NULL",
+                (time_str, emp_id, today_prefix)
             )
             log_activity(cursor, f"Employee {emp_id} timed out.")
 
@@ -133,14 +134,14 @@ def employee_time():
 @app.route("/api/employees/time/active", methods=["GET"])
 def active_employees():
     try:
-        date_str = datetime.now().strftime("%Y-%m-%d")
+        today_prefix = datetime.now().strftime("%Y-%m-%d") + "%"
         conn = get_connection()
         cursor = conn.cursor(as_dict=True)
         cursor.execute("""
             SELECT e.* FROM EmployeeList e
             JOIN EmployeeTimeList t ON e.EmployeeId = t.EmployeeId
-            WHERE t.DateCreated = %s AND t.TimeOut IS NULL
-        """, (date_str,))
+            WHERE t.DateCreated LIKE %s AND t.TimeOut IS NULL
+        """, (today_prefix,))
         rows = cursor.fetchall()
         conn.close()
         return jsonify(rows)
