@@ -112,12 +112,30 @@ def employee_time():
         cursor = conn.cursor(as_dict=True)
 
         if action == "in":
+            # Check if already timed in today
+            cursor.execute(
+                "SELECT * FROM EmployeeTimeList WHERE EmployeeId = %s AND DateCreated LIKE %s AND TimeOut IS NULL",
+                (emp_id, today_prefix)
+            )
+            if cursor.fetchone():
+                conn.close()
+                return jsonify(bake("Employee is already timed in.")), 400
+
             cursor.execute(
                 "INSERT INTO EmployeeTimeList (EmployeeId, TimeIn, DateCreated) VALUES (%s, %s, %s)",
                 (emp_id, time_str, date_str)
             )
             log_activity(cursor, f"Employee {emp_id} timed in.")
         elif action == "out":
+            # Check if timed in today
+            cursor.execute(
+                "SELECT * FROM EmployeeTimeList WHERE EmployeeId = %s AND DateCreated LIKE %s AND TimeOut IS NULL",
+                (emp_id, today_prefix)
+            )
+            if not cursor.fetchone():
+                conn.close()
+                return jsonify(bake("Employee is not timed in or already timed out.")), 400
+
             # Update the latest record without a TimeOut for today
             cursor.execute(
                 "UPDATE EmployeeTimeList SET TimeOut = %s WHERE EmployeeId = %s AND DateCreated LIKE %s AND TimeOut IS NULL",
@@ -442,8 +460,8 @@ def reports():
     try:
         conn = get_connection()
         cursor = conn.cursor(as_dict=True)
-        # Simplified report logic based on BillingList DateCreated
-        cursor.execute("SELECT DateCreated, TransactionBalance, BalancePaid, TransactionDiscount FROM BillingList WHERE BillingStatus = 'Paid'")
+        # Simplified report logic based on BillingList DateUpdated
+        cursor.execute("SELECT DateUpdated, TransactionBalance, BalancePaid, TransactionDiscount FROM BillingList WHERE BillingStatus = 'Paid'")
         rows = cursor.fetchall()
         conn.close()
         return jsonify(rows)
