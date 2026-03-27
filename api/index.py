@@ -220,7 +220,11 @@ def customers():
         if request.method == "GET":
             cursor.execute("""
                 SELECT c.*, 
-                (SELECT COUNT(*) FROM CustomerList WHERE ReferredBy = c.ReferralCode AND ReferralCode IS NOT NULL AND ReferralCode != '') as ReferralCount
+                CASE 
+                    WHEN c.ReferralCode IS NOT NULL AND c.ReferralCode <> '' 
+                    THEN (SELECT COUNT(*) FROM CustomerList WHERE ReferredBy = c.ReferralCode) 
+                    ELSE 0 
+                END as ReferralCount
                 FROM CustomerList c
             """)
             rows = cursor.fetchall()
