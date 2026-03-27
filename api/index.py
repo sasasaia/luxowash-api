@@ -112,14 +112,14 @@ def employee_time():
         cursor = conn.cursor(as_dict=True)
 
         if action == "in":
-            # Check if already timed in today
+            # Check if already timed in today (any record, even if timed out)
             cursor.execute(
-                "SELECT * FROM EmployeeTimeList WHERE EmployeeId = %s AND DateCreated LIKE %s AND TimeOut IS NULL",
-                (emp_id, today_prefix)
+                "SELECT * FROM EmployeeTimeList WHERE EmployeeId = %s AND LEFT(DateCreated, 10) = %s",
+                (emp_id, now.strftime("%Y-%m-%d"))
             )
             if cursor.fetchone():
                 conn.close()
-                return jsonify(bake("Employee is already timed in.")), 400
+                return jsonify(bake("Employee has already timed in today.")), 400
 
             cursor.execute(
                 "INSERT INTO EmployeeTimeList (EmployeeId, TimeIn, DateCreated) VALUES (%s, %s, %s)",
@@ -129,8 +129,8 @@ def employee_time():
         elif action == "out":
             # Check if timed in today
             cursor.execute(
-                "SELECT * FROM EmployeeTimeList WHERE EmployeeId = %s AND DateCreated LIKE %s AND TimeOut IS NULL",
-                (emp_id, today_prefix)
+                "SELECT * FROM EmployeeTimeList WHERE EmployeeId = %s AND LEFT(DateCreated, 10) = %s AND TimeOut IS NULL",
+                (emp_id, now.strftime("%Y-%m-%d"))
             )
             if not cursor.fetchone():
                 conn.close()
@@ -138,8 +138,8 @@ def employee_time():
 
             # Update the latest record without a TimeOut for today
             cursor.execute(
-                "UPDATE EmployeeTimeList SET TimeOut = %s WHERE EmployeeId = %s AND DateCreated LIKE %s AND TimeOut IS NULL",
-                (time_str, emp_id, today_prefix)
+                "UPDATE EmployeeTimeList SET TimeOut = %s WHERE EmployeeId = %s AND LEFT(DateCreated, 10) = %s AND TimeOut IS NULL",
+                (time_str, emp_id, now.strftime("%Y-%m-%d"))
             )
             log_activity(cursor, f"Employee {emp_id} timed out.")
 
@@ -159,8 +159,8 @@ def active_employees():
         cursor.execute("""
             SELECT e.* FROM EmployeeList e
             JOIN EmployeeTimeList t ON e.EmployeeId = t.EmployeeId
-            WHERE t.DateCreated LIKE %s AND t.TimeOut IS NULL
-        """, (today_prefix,))
+            WHERE LEFT(t.DateCreated, 10) = %s AND t.TimeOut IS NULL
+        """, (now_manila.strftime("%Y-%m-%d"),))
         rows = cursor.fetchall()
         conn.close()
         return jsonify(rows)
@@ -179,8 +179,8 @@ def employee_time_logs():
             JOIN EmployeeList e ON t.EmployeeId = e.EmployeeId
         """
         if date_filter:
-            query += " WHERE t.DateCreated LIKE %s"
-            cursor.execute(query + " ORDER BY t.DateCreated DESC", (date_filter + "%",))
+            query += " WHERE LEFT(t.DateCreated, 10) = %s"
+            cursor.execute(query + " ORDER BY t.DateCreated DESC", (date_filter,))
         else:
             cursor.execute(query + " ORDER BY t.DateCreated DESC")
             
