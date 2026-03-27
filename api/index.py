@@ -1,7 +1,7 @@
 import os
 import sys
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 import pymssql
@@ -103,7 +103,7 @@ def employee_time():
         data = request.json
         emp_id = data.get("EmployeeId")
         action = data.get("action") # "in" or "out"
-        now = datetime.now()
+        now = datetime.now(timezone(timedelta(hours=8)))
         time_str = now.strftime("%I:%M:%S %p")
         date_str = now.strftime("%Y-%m-%d %I:%M:%S %p")
         today_prefix = now.strftime("%Y-%m-%d") + "%"
@@ -134,7 +134,8 @@ def employee_time():
 @app.route("/api/employees/time/active", methods=["GET"])
 def active_employees():
     try:
-        today_prefix = datetime.now().strftime("%Y-%m-%d") + "%"
+        now_manila = datetime.now(timezone(timedelta(hours=8)))
+        today_prefix = now_manila.strftime("%Y-%m-%d") + "%"
         conn = get_connection()
         cursor = conn.cursor(as_dict=True)
         cursor.execute("""
@@ -374,7 +375,7 @@ def transactions():
         elif request.method == "POST":
             data = request.json
             trans_id = str(uuid.uuid4())
-            now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            now = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M:%S")
             
             cursor.execute(
                 "INSERT INTO TransactionList (TransactionId, EmployeeIdList, ServiceIdList, PackageId, Extras, VehicleId, TransactionStatus, DateCreated, DateUpdated) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
@@ -395,7 +396,7 @@ def transactions():
 
         elif request.method == "PUT":
             data = request.json
-            now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            now = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M:%S")
             cursor.execute(
                 "UPDATE TransactionList SET TransactionStatus=%s, DateUpdated=%s WHERE TransactionId=%s",
                 (data.get("TransactionStatus"), now, data.get("TransactionId"))
@@ -422,7 +423,7 @@ def billing():
 
         elif request.method == "PUT":
             data = request.json
-            now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            now = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M:%S")
             cursor.execute(
                 "UPDATE BillingList SET BalancePaid=%s, BillingStatus=%s, DateUpdated=%s WHERE BillingId=%s",
                 (data.get("BalancePaid"), data.get("BillingStatus"), now, data.get("BillingId"))
