@@ -403,6 +403,68 @@ def services():
     except Exception as e:
         return jsonify(bake(str(e))), 500
 
+@app.route("/api/extras", methods=["GET", "POST", "PUT", "DELETE"])
+def extras():
+    try:
+        conn = get_connection()
+        cursor = conn.cursor(as_dict=True)
+        
+        # Ensure table exists
+        try:
+            cursor.execute("""
+                IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='ExtrasList' and xtype='U')
+                CREATE TABLE ExtrasList (
+                    ExtraId NVARCHAR(255) PRIMARY KEY,
+                    ExtraName NVARCHAR(255),
+                    ExtraPrice DECIMAL(10, 2),
+                    ExtraType NVARCHAR(50),
+                    ExtraStatus NVARCHAR(50)
+                )
+            """)
+            conn.commit()
+        except Exception as e:
+            print("Table check/create error (ExtrasList):", e)
+            
+        if request.method == "GET":
+            cursor.execute("SELECT * FROM ExtrasList")
+            rows = cursor.fetchall()
+            conn.close()
+            return jsonify(rows)
+            
+        elif request.method == "POST":
+            data = request.json
+            extra_id = str(uuid.uuid4())
+            cursor.execute(
+                "INSERT INTO ExtrasList (ExtraId, ExtraName, ExtraPrice, ExtraType, ExtraStatus) VALUES (%s, %s, %s, %s, %s)",
+                (extra_id, data.get("ExtraName"), data.get("ExtraPrice"), data.get("ExtraType"), data.get("ExtraStatus", "Available"))
+            )
+            log_activity(cursor, f"Added extra {data.get('ExtraName')}")
+            conn.commit()
+            conn.close()
+            return jsonify(bake("Added successfully"))
+            
+        elif request.method == "PUT":
+            data = request.json
+            cursor.execute(
+                "UPDATE ExtrasList SET ExtraName=%s, ExtraPrice=%s, ExtraType=%s, ExtraStatus=%s WHERE ExtraId=%s",
+                (data.get("ExtraName"), data.get("ExtraPrice"), data.get("ExtraType"), data.get("ExtraStatus"), data.get("ExtraId"))
+            )
+            log_activity(cursor, f"Updated extra {data.get('ExtraId')}")
+            conn.commit()
+            conn.close()
+            return jsonify(bake("Updated successfully"))
+            
+        elif request.method == "DELETE":
+            extra_id = request.args.get("ExtraId")
+            cursor.execute("DELETE FROM ExtrasList WHERE ExtraId = %s", (extra_id,))
+            log_activity(cursor, f"Deleted extra {extra_id}")
+            conn.commit()
+            conn.close()
+            return jsonify(bake("Deleted successfully"))
+            
+    except Exception as e:
+        return jsonify(bake(str(e))), 500
+
 @app.route("/api/service-special-prices", methods=["GET", "POST", "DELETE"])
 def service_special_prices():
     try:
