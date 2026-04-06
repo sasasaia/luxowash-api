@@ -314,6 +314,19 @@ def vehicles():
     except Exception as e:
         return jsonify(bake(str(e))), 500
 
+@app.route("/api/vehicles/<vehicle_id>", methods=["DELETE"])
+def delete_vehicle(vehicle_id):
+    try:
+        conn = get_connection()
+        cursor = conn.cursor(as_dict=True)
+        cursor.execute("DELETE FROM VehicleList WHERE VehicleId = %s", (vehicle_id,))
+        log_activity(cursor, f"Deleted vehicle {vehicle_id}")
+        conn.commit()
+        conn.close()
+        return jsonify(bake("Deleted successfully"))
+    except Exception as e:
+        return jsonify(bake(str(e))), 500
+
 # --- USERS ---
 @app.route("/api/users", methods=["GET", "POST", "PUT"])
 def users():
@@ -353,15 +366,104 @@ def users():
         return jsonify(bake(str(e))), 500
 
 # --- SERVICES & PACKAGES ---
-@app.route("/api/services", methods=["GET"])
+@app.route("/api/services", methods=["GET", "POST", "PUT"])
 def services():
     try:
         conn = get_connection()
         cursor = conn.cursor(as_dict=True)
-        cursor.execute("SELECT * FROM ServiceList WHERE ServiceStatus = 'Available'")
-        rows = cursor.fetchall()
-        conn.close()
-        return jsonify(rows)
+        
+        if request.method == "GET":
+            cursor.execute("SELECT * FROM ServiceList")
+            rows = cursor.fetchall()
+            conn.close()
+            return jsonify(rows)
+            
+        elif request.method == "POST":
+            data = request.json
+            cursor.execute(
+                "INSERT INTO ServiceList (ServiceId, ServiceName, ServicePriceSizeS, ServicePriceSizeM, ServicePriceSizeL, ServicePriceSizeXL, ServicePriceSizeXXL, ServiceStatus) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+                (data.get("ServiceId"), data.get("ServiceName"), data.get("ServicePriceSizeS"), data.get("ServicePriceSizeM"), data.get("ServicePriceSizeL"), data.get("ServicePriceSizeXL"), data.get("ServicePriceSizeXXL"), data.get("ServiceStatus"))
+            )
+            log_activity(cursor, f"Added service {data.get('ServiceName')}")
+            conn.commit()
+            conn.close()
+            return jsonify(bake("Added successfully"))
+            
+        elif request.method == "PUT":
+            data = request.json
+            cursor.execute(
+                "UPDATE ServiceList SET ServiceName=%s, ServicePriceSizeS=%s, ServicePriceSizeM=%s, ServicePriceSizeL=%s, ServicePriceSizeXL=%s, ServicePriceSizeXXL=%s, ServiceStatus=%s WHERE ServiceId=%s",
+                (data.get("ServiceName"), data.get("ServicePriceSizeS"), data.get("ServicePriceSizeM"), data.get("ServicePriceSizeL"), data.get("ServicePriceSizeXL"), data.get("ServicePriceSizeXXL"), data.get("ServiceStatus"), data.get("ServiceId"))
+            )
+            log_activity(cursor, f"Updated service {data.get('ServiceId')}")
+            conn.commit()
+            conn.close()
+            return jsonify(bake("Updated successfully"))
+            
+    except Exception as e:
+        return jsonify(bake(str(e))), 500
+
+@app.route("/api/service-special-prices", methods=["GET", "POST", "DELETE"])
+def service_special_prices():
+    try:
+        conn = get_connection()
+        cursor = conn.cursor(as_dict=True)
+        
+        # Ensure table exists
+        try:
+            cursor.execute("""
+                IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='ServiceVehiclePriceList' and xtype='U')
+                CREATE TABLE ServiceVehiclePriceList (
+                    Id INT IDENTITY(1,1) PRIMARY KEY,
+                    ServiceId NVARCHAR(255),
+                    VehicleBrand NVARCHAR(255),
+                    VehicleModel NVARCHAR(255),
+                    SpecialPrice DECIMAL(10, 2)
+                )
+            """)
+            conn.commit()
+        except Exception as e:
+            print("Table check/create error:", e)
+            
+        if request.method == "GET":
+            cursor.execute("SELECT * FROM ServiceVehiclePriceList")
+            rows = cursor.fetchall()
+            conn.close()
+            return jsonify(rows)
+            
+        elif request.method == "POST":
+            data = request.json
+            # Check if exists to update or insert
+            cursor.execute(
+                "SELECT * FROM ServiceVehiclePriceList WHERE ServiceId = %s AND VehicleBrand = %s AND VehicleModel = %s",
+                (data.get("ServiceId"), data.get("VehicleBrand"), data.get("VehicleModel"))
+            )
+            if cursor.fetchone():
+                cursor.execute(
+                    "UPDATE ServiceVehiclePriceList SET SpecialPrice = %s WHERE ServiceId = %s AND VehicleBrand = %s AND VehicleModel = %s",
+                    (data.get("SpecialPrice"), data.get("ServiceId"), data.get("VehicleBrand"), data.get("VehicleModel"))
+                )
+            else:
+                cursor.execute(
+                    "INSERT INTO ServiceVehiclePriceList (ServiceId, VehicleBrand, VehicleModel, SpecialPrice) VALUES (%s, %s, %s, %s)",
+                    (data.get("ServiceId"), data.get("VehicleBrand"), data.get("VehicleModel"), data.get("SpecialPrice"))
+                )
+            log_activity(cursor, f"Set special price for {data.get('ServiceId')} on {data.get('VehicleBrand')} {data.get('VehicleModel')}")
+            conn.commit()
+            conn.close()
+            return jsonify(bake("Special price saved"))
+            
+        elif request.method == "DELETE":
+            data = request.json
+            cursor.execute(
+                "DELETE FROM ServiceVehiclePriceList WHERE ServiceId = %s AND VehicleBrand = %s AND VehicleModel = %s",
+                (data.get("ServiceId"), data.get("VehicleBrand"), data.get("VehicleModel"))
+            )
+            log_activity(cursor, f"Removed special price for {data.get('ServiceId')} on {data.get('VehicleBrand')} {data.get('VehicleModel')}")
+            conn.commit()
+            conn.close()
+            return jsonify(bake("Special price removed"))
+            
     except Exception as e:
         return jsonify(bake(str(e))), 500
 
