@@ -585,7 +585,7 @@ def transactions():
             
             cursor.execute(
                 "INSERT INTO TransactionList (TransactionId, EmployeeIdList, ServiceIdList, PackageId, Extras, VehicleId, TransactionStatus, DateCreated, DateUpdated) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
-                (trans_id, data.get("EmployeeIdList"), data.get("ServiceIdList"), data.get("PackageId"), data.get("Extras"), data.get("VehicleId"), "In Progress", now, now)
+                (trans_id, data.get("EmployeeIdList"), data.get("ServiceIdList"), data.get("PackageId"), data.get("Extras"), data.get("VehicleId"), "Ready", now, now)
             )
             
             # Create Billing
