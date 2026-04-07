@@ -19,7 +19,12 @@ def get_connection():
     )
 
 def log_activity(cursor, message):
-    cursor.execute("INSERT INTO ActivityList (ActivityMessage) VALUES (%s)", (message,))
+    now = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        cursor.execute("INSERT INTO ActivityList (ActivityMessage, ActivityDate) VALUES (%s, %s)", (message, now))
+    except:
+        # Fallback if ActivityDate column doesn't exist yet
+        cursor.execute("INSERT INTO ActivityList (ActivityMessage) VALUES (%s)", (message,))
 
 @app.route("/")
 def home():
@@ -48,6 +53,10 @@ def login():
         cursor.execute("SELECT * FROM UserList WHERE Username = %s AND Password = %s", (username, password))
         user = cursor.fetchone()
         if user:
+            # Record login time if needed, but the request says "add a time in schedule for user accounts according to log in"
+            # This might mean recording the actual login time for the day.
+            now = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M:%S")
+            cursor.execute("UPDATE UserList SET LastLogin = %s WHERE Username = %s", (now, username))
             log_activity(cursor, f"User {username} logged in.")
             conn.commit()
             conn.close()
@@ -334,8 +343,17 @@ def users():
         conn = get_connection()
         cursor = conn.cursor(as_dict=True)
 
+        # Ensure columns exist
+        try:
+            cursor.execute("IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('UserList') AND name = 'DailyRate') ALTER TABLE UserList ADD DailyRate DECIMAL(10, 2) DEFAULT 0")
+            cursor.execute("IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('UserList') AND name = 'ScheduleTime') ALTER TABLE UserList ADD ScheduleTime NVARCHAR(255)")
+            cursor.execute("IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('UserList') AND name = 'LastLogin') ALTER TABLE UserList ADD LastLogin NVARCHAR(255)")
+            conn.commit()
+        except:
+            pass
+
         if request.method == "GET":
-            cursor.execute("SELECT Username FROM UserList")
+            cursor.execute("SELECT Username, DailyRate, ScheduleTime, LastLogin FROM UserList")
             rows = cursor.fetchall()
             conn.close()
             return jsonify(rows)
@@ -343,8 +361,8 @@ def users():
         elif request.method == "POST":
             data = request.json
             cursor.execute(
-                "INSERT INTO UserList (Username, Password) VALUES (%s, %s)",
-                (data.get("Username"), data.get("Password"))
+                "INSERT INTO UserList (Username, Password, DailyRate, ScheduleTime) VALUES (%s, %s, %s, %s)",
+                (data.get("Username"), data.get("Password"), data.get("DailyRate", 0), data.get("ScheduleTime"))
             )
             log_activity(cursor, f"Added user {data.get('Username')}")
             conn.commit()
@@ -353,10 +371,16 @@ def users():
 
         elif request.method == "PUT":
             data = request.json
-            cursor.execute(
-                "UPDATE UserList SET Password=%s WHERE Username=%s",
-                (data.get("Password"), data.get("Username"))
-            )
+            if data.get("Password"):
+                cursor.execute(
+                    "UPDATE UserList SET Password=%s, DailyRate=%s, ScheduleTime=%s WHERE Username=%s",
+                    (data.get("Password"), data.get("DailyRate", 0), data.get("ScheduleTime"), data.get("Username"))
+                )
+            else:
+                cursor.execute(
+                    "UPDATE UserList SET DailyRate=%s, ScheduleTime=%s WHERE Username=%s",
+                    (data.get("DailyRate", 0), data.get("ScheduleTime"), data.get("Username"))
+                )
             log_activity(cursor, f"Updated user {data.get('Username')}")
             conn.commit()
             conn.close()
@@ -637,8 +661,15 @@ def activity():
     try:
         conn = get_connection()
         cursor = conn.cursor(as_dict=True)
-        # Assuming we want the latest activities
-        cursor.execute("SELECT * FROM ActivityList") # In a real app, add an ID or Timestamp to order by
+        
+        # Ensure ActivityDate column exists
+        try:
+            cursor.execute("IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('ActivityList') AND name = 'ActivityDate') ALTER TABLE ActivityList ADD ActivityDate NVARCHAR(255)")
+            conn.commit()
+        except:
+            pass
+
+        cursor.execute("SELECT * FROM ActivityList ORDER BY ActivityDate DESC") 
         rows = cursor.fetchall()
         conn.close()
         return jsonify(rows)
