@@ -307,7 +307,7 @@ def vehicles():
             log_activity(cursor, f"Added vehicle {data.get('PlateNumber')} for customer {data.get('CustomerId')}")
             conn.commit()
             conn.close()
-            return jsonify(bake("Added successfully"))
+            return jsonify({"VehicleId": veh_id})
 
         elif request.method == "PUT":
             data = request.json
