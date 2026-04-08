@@ -625,11 +625,28 @@ def transactions():
         elif request.method == "PUT":
             data = request.json
             now = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M:%S")
-            cursor.execute(
-                "UPDATE TransactionList SET TransactionStatus=%s, DateUpdated=%s WHERE TransactionId=%s",
-                (data.get("TransactionStatus"), now, data.get("TransactionId"))
-            )
-            log_activity(cursor, f"Updated transaction {data.get('TransactionId')} status to {data.get('TransactionStatus')}")
+            
+            if "TransactionStatus" in data and len(data.keys()) <= 2:
+                # Simple status update
+                cursor.execute(
+                    "UPDATE TransactionList SET TransactionStatus=%s, DateUpdated=%s WHERE TransactionId=%s",
+                    (data.get("TransactionStatus"), now, data.get("TransactionId"))
+                )
+                log_activity(cursor, f"Updated transaction {data.get('TransactionId')} status to {data.get('TransactionStatus')}")
+            else:
+                # Full update (for editing Ready transactions)
+                cursor.execute(
+                    "UPDATE TransactionList SET EmployeeIdList=%s, ServiceIdList=%s, PackageId=%s, Extras=%s, VehicleId=%s, DateUpdated=%s WHERE TransactionId=%s",
+                    (data.get("EmployeeIdList"), data.get("ServiceIdList"), data.get("PackageId"), data.get("Extras"), data.get("VehicleId"), now, data.get("TransactionId"))
+                )
+                
+                # Update Billing
+                cursor.execute(
+                    "UPDATE BillingList SET TransactionBalance=%s, TransactionDiscount=%s, DateUpdated=%s WHERE BillingId=%s",
+                    (data.get("TotalBalance"), data.get("Discount"), now, data.get("TransactionId"))
+                )
+                log_activity(cursor, f"Edited transaction {data.get('TransactionId')}")
+                
             conn.commit()
             conn.close()
             return jsonify(bake("Updated successfully"))
