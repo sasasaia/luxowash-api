@@ -353,35 +353,57 @@ def users():
             pass
 
         if request.method == "GET":
-            cursor.execute("SELECT Username, DailyRate, ScheduleTime, LastLogin FROM UserList")
-            rows = cursor.fetchall()
+            cursor.execute("SELECT Username, DailyRate, ScheduleTime, LastLogin, 'user' as Role FROM UserList")
+            users = cursor.fetchall()
+            
+            # Ensure AdminList exists (it should, but just in case)
+            cursor.execute("SELECT Username, 0 as DailyRate, '' as ScheduleTime, '' as LastLogin, 'admin' as Role FROM AdminList")
+            admins = cursor.fetchall()
+            
             conn.close()
-            return jsonify(rows)
+            return jsonify(users + admins)
 
         elif request.method == "POST":
             data = request.json
-            cursor.execute(
-                "INSERT INTO UserList (Username, Password, DailyRate, ScheduleTime) VALUES (%s, %s, %s, %s)",
-                (data.get("Username"), data.get("Password"), data.get("DailyRate", 0), data.get("ScheduleTime"))
-            )
-            log_activity(cursor, f"Added user {data.get('Username')}")
+            role = data.get("Role", "user")
+            
+            if role == "admin":
+                cursor.execute(
+                    "INSERT INTO AdminList (Username, Password) VALUES (%s, %s)",
+                    (data.get("Username"), data.get("Password"))
+                )
+            else:
+                cursor.execute(
+                    "INSERT INTO UserList (Username, Password, DailyRate, ScheduleTime) VALUES (%s, %s, %s, %s)",
+                    (data.get("Username"), data.get("Password"), data.get("DailyRate", 0), data.get("ScheduleTime"))
+                )
+            log_activity(cursor, f"Added {role} {data.get('Username')}")
             conn.commit()
             conn.close()
             return jsonify(bake("Added successfully"))
 
         elif request.method == "PUT":
             data = request.json
-            if data.get("Password"):
-                cursor.execute(
-                    "UPDATE UserList SET Password=%s, DailyRate=%s, ScheduleTime=%s WHERE Username=%s",
-                    (data.get("Password"), data.get("DailyRate", 0), data.get("ScheduleTime"), data.get("Username"))
-                )
+            role = data.get("Role", "user")
+            
+            if role == "admin":
+                if data.get("Password"):
+                    cursor.execute(
+                        "UPDATE AdminList SET Password=%s WHERE Username=%s",
+                        (data.get("Password"), data.get("Username"))
+                    )
             else:
-                cursor.execute(
-                    "UPDATE UserList SET DailyRate=%s, ScheduleTime=%s WHERE Username=%s",
-                    (data.get("DailyRate", 0), data.get("ScheduleTime"), data.get("Username"))
-                )
-            log_activity(cursor, f"Updated user {data.get('Username')}")
+                if data.get("Password"):
+                    cursor.execute(
+                        "UPDATE UserList SET Password=%s, DailyRate=%s, ScheduleTime=%s WHERE Username=%s",
+                        (data.get("Password"), data.get("DailyRate", 0), data.get("ScheduleTime"), data.get("Username"))
+                    )
+                else:
+                    cursor.execute(
+                        "UPDATE UserList SET DailyRate=%s, ScheduleTime=%s WHERE Username=%s",
+                        (data.get("DailyRate", 0), data.get("ScheduleTime"), data.get("Username"))
+                    )
+            log_activity(cursor, f"Updated {role} {data.get('Username')}")
             conn.commit()
             conn.close()
             return jsonify(bake("Updated successfully"))
