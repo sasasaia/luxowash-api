@@ -299,23 +299,40 @@ def vehicles():
 
         elif request.method == "POST":
             data = request.json
+            plate_number = data.get("PlateNumber", "").strip().upper()
+            
+            # Check for duplicate plate number
+            cursor.execute("SELECT VehicleId FROM VehicleList WHERE PlateNumber = %s", (plate_number,))
+            if cursor.fetchone():
+                conn.close()
+                return jsonify(bake("Plate number already exists")), 400
+
             veh_id = str(uuid.uuid4())
             cursor.execute(
                 "INSERT INTO VehicleList (VehicleId, VehicleBrand, VehicleModel, VehicleSize, PlateNumber, CustomerId) VALUES (%s, %s, %s, %s, %s, %s)",
-                (veh_id, data.get("VehicleBrand"), data.get("VehicleModel"), data.get("VehicleSize"), data.get("PlateNumber"), data.get("CustomerId"))
+                (veh_id, data.get("VehicleBrand"), data.get("VehicleModel"), data.get("VehicleSize"), plate_number, data.get("CustomerId"))
             )
-            log_activity(cursor, f"Added vehicle {data.get('PlateNumber')} for customer {data.get('CustomerId')}")
+            log_activity(cursor, f"Added vehicle {plate_number} for customer {data.get('CustomerId')}")
             conn.commit()
             conn.close()
             return jsonify({"VehicleId": veh_id})
 
         elif request.method == "PUT":
             data = request.json
+            veh_id = data.get("VehicleId")
+            plate_number = data.get("PlateNumber", "").strip().upper()
+
+            # Check for duplicate plate number (excluding current vehicle)
+            cursor.execute("SELECT VehicleId FROM VehicleList WHERE PlateNumber = %s AND VehicleId != %s", (plate_number, veh_id))
+            if cursor.fetchone():
+                conn.close()
+                return jsonify(bake("Plate number already exists")), 400
+
             cursor.execute(
                 "UPDATE VehicleList SET VehicleBrand=%s, VehicleModel=%s, VehicleSize=%s, PlateNumber=%s WHERE VehicleId=%s",
-                (data.get("VehicleBrand"), data.get("VehicleModel"), data.get("VehicleSize"), data.get("PlateNumber"), data.get("VehicleId"))
+                (data.get("VehicleBrand"), data.get("VehicleModel"), data.get("VehicleSize"), plate_number, veh_id)
             )
-            log_activity(cursor, f"Updated vehicle {data.get('VehicleId')}")
+            log_activity(cursor, f"Updated vehicle {veh_id}")
             conn.commit()
             conn.close()
             return jsonify(bake("Updated successfully"))
